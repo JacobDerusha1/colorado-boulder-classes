@@ -1,0 +1,207 @@
+---
+title: "NYPDShootingData"
+date: "6/9/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+
+library(ggplot2)
+
+library(tidyverse)
+```
+
+
+## Questions
+
+I wanted to see what the shootings per 100,000 looked like in each borough to compare and see how close they are, and I wanted to see if seasonality or time of the year affected the number of shootings.
+
+##Summary
+This data set is a list of every shooting incident that occurred in New York City going back to 2006 through the end of the previous calender year. Each record is labeled by an Incident key, and originally contains the following information on the shooting:
+
+-The date of the shooting
+
+-The time the shooting occurred
+
+-Where is NYC the shooting took place(i.e Manhattan, Queens, e.t.c.)
+
+-The Police Precinct Number
+
+-The Jurisdiction Code
+
+-A description of the location
+
+-A Statistical murder flag
+
+-The Perpetrator's age group
+
+-The Perpetrator's Sex
+
+-The Perpetrator's Race
+
+-The Victim's age group
+
+-The Victim's Sex
+
+-The Victim's Race
+
+-The X coordinate
+
+-The Y coordinate
+
+-The Latitude
+
+-The Longitude
+
+-The longitude and latitude point
+
+**Reading in the CSV file***
+
+```{r read_csv_file}
+#This reads in the data set 
+shooting_data <- read.csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+summary(shooting_data)
+
+```
+
+### Tidying up the data
+
+With the data read in, we can now tidy it up and remove, name, and combine columns so that the data is much easier to use and understand.
+
+First, We are going to get rid of the following columns:
+
+-Incident Key
+
+-Precinct
+
+-Jurisdiction code
+
+-location description
+
+-And all of the longitude and latitude data, including the X and Y coordinates
+
+We are also going to rename some of the columns so that they can be easier read and understood. I am going to keep the new
+names all capitals as well, just so that they are similar to what is already in the data.
+
+-OCCUR_DATE = DATE
+
+-OCCUR_TIME = TIME
+
+-STATISTICAL_MURDER_FLAG = MURDER_FLAG
+
+Looking at the summary of the data we can also see that DATE and TIME are character variable types, we want to change that to date and time variable types. We are
+also going to change the MURDER_FLAG column from a character type to a logical type.
+
+```{r tidy_dataset}
+
+shooting_data <- shooting_data %>%
+    select(-c(INCIDENT_KEY, PRECINCT, JURISDICTION_CODE, LOCATION_DESC,
+              X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat)) %>%
+    rename(DATE = 'OCCUR_DATE',
+           TIME = 'OCCUR_TIME',
+           MURDER_FLAG = 'STATISTICAL_MURDER_FLAG')%>%
+    mutate(DATE = mdy(DATE),
+           TIME = hms(TIME),
+           MURDER_FLAG = as.logical(MURDER_FLAG))
+
+summary(shooting_data)
+
+```
+
+### Missing data from the set
+```{r print_head_for_nulls}
+
+# This prints the first 10 lines of shooting_data
+head(shooting_data, 10)
+
+```
+
+
+Looking at the first 10 rows of the data set above, we can see that we are actually missing data in a few places. We are missing some entries in the PERP_AGE_GROUP, PERP_SEX,
+and PERP_RACE Columns. We don't exactly know why this data is missing, the most likely though is that the police either don't know who the perpetrator is. So, for the missing
+data we are just going assume that missing values means that the police don't have any information on the perpetrator.
+
+
+### Visualizing the Data
+
+To start visualizing the data, I am going to create a new data frame called shooting_loc, which has the sum of instances of the particular borough. 
+
+```{r create_shooting_loc}
+
+shooting_loc <- count(shooting_data, BORO = shooting_data$BORO)
+
+shooting_loc
+
+```
+
+Now that we have an understanding of the total number of shootings in each borough, I want to see if there is a correlation with the population of each 
+borough. Meaning, I want to visualize the shootings per 100,000 in each borough.
+
+So, first we have to add population data to the shooting_loc data frame, and then we can do the calculations for the visualization. The population data was obtained from census.gov, and is the official estimates based on the most recent census data
+
+```{r add_population_data}
+# This creates a population vector so that it can easily be added to the data frame
+pop_vec <- c(1418187, 2559903, 1628706, 2253858, 476143)
+shooting_loc$population <- pop_vec
+
+#This creates a new column that is the shootings per 100,000
+shooting_loc <- transform(shooting_loc, per_100000 = ((n/population) * 100000))
+
+shooting_loc
+
+```
+
+We are going to show a bar graph of the shootings per 100,000 
+
+```{r create_pop_bar_graph}
+
+barplot(shooting_loc$per_100000, 
+        main = "Shootings per 100000", 
+        names.arg = shooting_loc$BORO,
+        border="blue",
+        cex.names=0.8,
+        col="red",
+        density=50)
+```
+
+From the above graph, we can see that the shootings per 100,000 are not equal for every borough, meaning that the population is not the only factor in the frequency. There must be other factors. Things like population density, socio-economic status, gang membership, or a combination of multiple factors.
+
+
+Now, I want to see if time of year has any impact on shootings, we are going to create a scatter plot based on the dates of the shootings. First, we have to create a new column of the dates, specifically, it is going to show what month the entry took place in to make creating the plot easier.
+
+```{r create_time_graph}
+
+monthly <- shooting_data %>%
+           mutate(month = format(DATE, "%m"), year = format(DATE, "%Y"))
+
+monthly <- count(monthly, Month = monthly$month)
+monthly
+
+barplot(monthly$n, 
+        main = "Shootings per Month", 
+        names.arg = monthly$Month,
+        border="red",
+        col="blue",
+        density=50)
+```
+
+As we can see in the above graph, it appears that more shootings happen in the summer time, which makes sense, as more people would be out and about the city. We see a dip in frequency in the winter months, as more people would stay in doors. 
+
+### Conclusion and Bias
+
+For Bias, my assumption that socio-economic status might play a roll in the shootings per 100,000 of a borough is defenitly a bias, it is not something that is backed up in the data that we have or used. Another source of bias would be my selection and analysis based on the months of the year, I assumed that there would be a difference over the year, because of the changing weather.
+
+
+So, based of all the data we had gathered, and the types of we have concluded that the frequency of per captia shootings in a borough is not reliant on just the population and that the months and seasons of the year do play a part in the frequency of shootings. We can see that population is not the only factor, because if it was than the shootings per 100,000 would be about the same for each borough. We also saw that the summer had a much higher frequency of shootings compared to the winter.
+
+
+```{r session_info}
+
+sessionInfo()
+
+```
